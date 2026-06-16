@@ -1,49 +1,73 @@
 import os
-from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
+import json
+from pathlib import Path
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from dotenv import load_dotenv
 
-load_dotenv()
+STORE_DIR = Path(os.getenv("CHROMA_PERSIST_DIR", "./data/vector_store"))
+STORE_DIR.mkdir(parents=True, exist_ok=True)
+STORE_FILE = STORE_DIR / "documents.json"
 
-CHROMA_DIR = os.getenv("CHROMA_PERSIST_DIR", "./data/vector_store")
-
-
-def get_embeddings():
-    return HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"
-    )
+_vectorizer = None
+_doc_vectors = None
+_documents = []
 
 
-def get_vector_store():
-    embeddings = get_embeddings()
-    return Chroma(
-        persist_directory=CHROMA_DIR,
-        embedding_function=embeddings,
-        collection_name="financial_docs"
-    )
+def _load_documents():
+    if STORE_FILE.exists():
+        with open(STORE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+
+def _save_documents(docs):
+    with open(STORE_FILE, "w", encoding="utf-8") as f:
+        json.dump(docs, f)
 
 
 def ingest_document(text: str, metadata: dict):
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=500,
-        chunk_overlap=50
-    )
+    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     chunks = splitter.split_text(text)
     if not chunks:
         return 0
-    store = get_vector_store()
-    store.add_texts(texts=chunks, metadatas=[metadata] * len(chunks))
+
+    docs = _load_documents()
+    for chunk in chunks:
+        docs.append({"text": chunk, "metadata": metadata})
+    _save_documents(docs)
     return len(chunks)
 
 
 def retrieve_context(query: str, k: int = 4) -> list:
-    store = get_vector_store()
-    docs = store.similarity_search(query, k=k)
-    return [doc.page_content for doc in docs]
+    docs = _load_documents()
+    if not docs:
+        return []
+
+    texts = [d["text"] for d in docs]
+    all_texts = texts + [query]
+
+    vectorizer = TfidfVectorizer(stop_words="english")
+    try:
+        tfidf_matrix = vectorizer.fit_transform(all_texts)
+    except ValueError:
+        return texts[:k]
+
+    query_vector = tfidf_matrix[-1]
+    doc_vectors = tfidf_matrix[:-1]
+
+    similarities = cosine_similarity(query_vector, doc_vectors).flatten()
+    top_indices = similarities.argsort()[::-1][:k]
+
+    return [texts[i] for i in top_indices]
 
 
 def seed_billing_policies():
+    existing = _load_documents()
+    if existing:
+        print("Billing policies already seeded, skipping.")
+        return
+
     policies = [
         {
             "text": "AWS charges for EC2 instances are billed hourly. Data transfer out costs $0.09 per GB. S3 storage costs $0.023 per GB per month.",
