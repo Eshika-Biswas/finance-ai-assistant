@@ -1,7 +1,7 @@
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from backend.retrieval.vector_store import retrieve_context
+from retrieval.vector_store import retrieve_context
 
 
 def build_rag_llm():

@@ -8,10 +8,10 @@ from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 
-from backend.extraction.document_parser import FinancialDocumentParser, FinancialFieldExtractor
-from backend.core.vision_chain import analyze_document_image, build_vision_llm
-from backend.core.rag_pipeline import run_rag_pipeline
-from backend.retrieval.vector_store import ingest_document, seed_billing_policies
+from extraction.document_parser import FinancialDocumentParser, FinancialFieldExtractor
+from core.vision_chain import analyze_document_image, build_vision_llm
+from core.rag_pipeline import run_rag_pipeline
+from retrieval.vector_store import ingest_document, seed_billing_policies
 
 app = FastAPI(title="Finance AI Assistant")
 
